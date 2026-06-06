@@ -2,242 +2,322 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ロケットナウ導入済み店舗</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>ロケットナウ 導入済み店舗</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #1a1a1a; color: white; }
 
+    /* ヘッダー */
     #header {
       background: #FF5132;
-      color: white;
-      padding: 12px 16px;
+      padding: 10px 16px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       position: fixed;
       top: 0; left: 0; right: 0;
       z-index: 1000;
+      box-shadow: 0 2px 12px rgba(255,81,50,0.4);
     }
 
-    #header h1 { font-size: 18px; font-weight: bold; white-space: nowrap; }
+    #logo { font-size: 20px; font-weight: 900; white-space: nowrap; letter-spacing: -0.5px; }
+    #logo span { opacity: 0.8; font-size: 12px; font-weight: 500; display: block; margin-top: -2px; }
 
     #search-box {
-      padding: 8px 12px;
+      flex: 1;
+      min-width: 150px;
+      padding: 8px 14px;
       border-radius: 20px;
       border: none;
       font-size: 14px;
-      width: 200px;
       outline: none;
+      background: rgba(255,255,255,0.95);
+      color: #333;
     }
 
     #region-filter {
       padding: 8px 12px;
       border-radius: 20px;
       border: none;
-      font-size: 14px;
+      font-size: 13px;
       outline: none;
       cursor: pointer;
+      background: rgba(255,255,255,0.95);
+      color: #333;
+    }
+
+    #status-filter {
+      padding: 8px 12px;
+      border-radius: 20px;
+      border: none;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+      background: rgba(255,255,255,0.95);
+      color: #333;
     }
 
     #store-count {
       font-size: 13px;
-      opacity: 0.9;
+      font-weight: bold;
       white-space: nowrap;
+      background: rgba(0,0,0,0.2);
+      padding: 6px 12px;
+      border-radius: 20px;
     }
 
-    #upload-btn {
+    #location-btn {
       background: white;
       color: #FF5132;
       border: none;
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 20px;
       font-size: 13px;
       font-weight: bold;
       cursor: pointer;
       white-space: nowrap;
     }
+    #location-btn:hover { background: #ffe8e3; }
 
-    #upload-btn:hover { background: #ffe8e3; }
-
+    #upload-btn {
+      background: rgba(0,0,0,0.2);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #upload-btn:hover { background: rgba(0,0,0,0.3); }
     #file-input { display: none; }
 
+    /* 凡例 */
+    #legend {
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      background: rgba(0,0,0,0.8);
+      border-radius: 12px;
+      padding: 12px 16px;
+      z-index: 500;
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+    }
+    #legend h4 { font-size: 11px; opacity: 0.7; margin-bottom: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+    /* 地図 */
     #map {
       position: fixed;
-      top: 60px;
+      top: 56px;
       left: 0; right: 0; bottom: 0;
     }
 
+    /* ローディング */
     #loading {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(255,255,255,0.9);
-      display: flex;
+      background: rgba(0,0,0,0.85);
+      display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 2000;
-      font-size: 16px;
-      color: #FF5132;
     }
-
     .spinner {
-      width: 40px; height: 40px;
-      border: 4px solid #ffe8e3;
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,81,50,0.3);
       border-top: 4px solid #FF5132;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { font-size: 14px; opacity: 0.8; }
 
+    /* ウェルカム */
     #welcome {
       position: fixed;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      background: white;
-      border-radius: 16px;
-      padding: 32px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      background: #222;
+      border: 1px solid #333;
+      border-radius: 20px;
+      padding: 36px;
       text-align: center;
       z-index: 500;
-      max-width: 320px;
+      max-width: 340px;
       width: 90%;
     }
-
-    #welcome h2 { font-size: 20px; margin-bottom: 8px; color: #1e40af; }
-    #welcome p { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.6; }
-
+    #welcome h2 { font-size: 22px; margin-bottom: 8px; color: #FF5132; }
+    #welcome p { font-size: 14px; color: #aaa; margin-bottom: 24px; line-height: 1.6; }
     .upload-area {
       border: 2px dashed #FF5132;
       border-radius: 12px;
-      padding: 24px;
+      padding: 28px;
       cursor: pointer;
       transition: background 0.2s;
     }
+    .upload-area:hover { background: rgba(255,81,50,0.1); }
+    .upload-area p { color: #FF5132; font-size: 15px; font-weight: bold; }
+    .upload-area small { color: #666; font-size: 12px; display: block; margin-top: 4px; }
 
-    .upload-area:hover { background: #eff6ff; }
-    .upload-area p { color: #2563eb; font-size: 14px; font-weight: bold; }
+    /* ポップアップ */
+    .leaflet-popup-content-wrapper {
+      background: #222;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .leaflet-popup-tip { background: #222; }
+    .popup-title { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+    .popup-address { font-size: 12px; color: #aaa; margin-bottom: 6px; line-height: 1.5; }
+    .popup-status { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+    .status-receipt { background: rgba(46,204,113,0.2); color: #2ecc71; }
+    .status-app { background: rgba(255,81,50,0.2); color: #FF5132; }
+    .status-pending { background: rgba(241,196,15,0.2); color: #f1c40f; }
 
-    .leaflet-popup-content { font-size: 13px; line-height: 1.6; }
-    .popup-title { font-weight: bold; font-size: 14px; color: #1e40af; }
-    .popup-region { color: #666; font-size: 12px; }
+    /* 統計パネル */
+    #stats {
+      position: fixed;
+      top: 66px;
+      right: 16px;
+      background: rgba(0,0,0,0.8);
+      border-radius: 12px;
+      padding: 12px 16px;
+      z-index: 500;
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+      min-width: 140px;
+    }
+    #stats h4 { font-size: 11px; opacity: 0.7; margin-bottom: 8px; }
+    .stat-item { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .stat-num { font-weight: bold; color: #FF5132; }
   </style>
 </head>
 <body>
 
 <div id="header">
-  <h1>🚀 ロケットナウ導入済み店舗</h1>
-  <input type="text" id="search-box" placeholder="🔍 店舗名で検索..." oninput="filterStores()">
+  <div id="logo">🚀 RocketNow<span>導入済み店舗マップ</span></div>
+  <input type="text" id="search-box" placeholder="🔍 店舗名・住所で検索..." oninput="filterStores()">
   <select id="region-filter" onchange="filterStores()">
-    <option value="">📍 全地域</option>
+    <option value="">📍 全エリア</option>
+  </select>
+  <select id="status-filter" onchange="filterStores()">
+    <option value="">全ステータス</option>
+    <option value="RECEIPT">🟢 RECEIPT</option>
+    <option value="APP_DISPLAY">🟠 APP_DISPLAY</option>
+    <option value="PENDING">🔴 PENDING</option>
   </select>
   <span id="store-count">0件</span>
-  <button id="upload-btn" onclick="document.getElementById('file-input').click()">＋ CSVを追加</button>
-  <input type="file" id="file-input" accept=".csv" multiple onchange="loadCSVFiles(event)">
+  <button id="location-btn" onclick="showMyLocation()">📍 現在地</button>
+  <button id="upload-btn" onclick="document.getElementById('file-input').click()">＋ CSV</button>
+  <input type="file" id="file-input" accept=".csv,.json" multiple onchange="loadFiles(event)">
 </div>
 
 <div id="map"></div>
 
-<div id="loading" style="display:none">
+<!-- 統計パネル -->
+<div id="stats" style="display:none">
+  <h4>📊 ステータス内訳</h4>
+  <div class="stat-item"><span>🟢 RECEIPT</span><span class="stat-num" id="count-receipt">0</span></div>
+  <div class="stat-item"><span>🟠 APP_DISPLAY</span><span class="stat-num" id="count-app">0</span></div>
+  <div class="stat-item"><span>🔴 PENDING</span><span class="stat-num" id="count-pending">0</span></div>
+</div>
+
+<!-- 凡例 -->
+<div id="legend" style="display:none">
+  <h4>ステータス</h4>
+  <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>RECEIPT（完全導入）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FF5132"></div>APP_DISPLAY（アプリのみ）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f1c40f"></div>PENDING（対応中）</div>
+</div>
+
+<div id="loading">
   <div class="spinner"></div>
-  <p>読み込み中...</p>
+  <p id="loading-text">読み込み中...</p>
 </div>
 
 <div id="welcome">
-  <h2>🚀 ロケットナウ導入済み店舗</h2>
-  <p>CSVファイルをアップロードすると<br>地図上に店舗が表示されます</p>
+  <h2>🚀 RocketNow</h2>
+  <p>導入済み店舗マップ<br>CSVまたはJSONをアップロードして<br>地図上に表示します</p>
   <div class="upload-area" onclick="document.getElementById('file-input').click()">
-    <p>📂 CSVファイルを選択</p>
-    <p style="color:#999;font-size:12px;font-weight:normal;margin-top:4px">複数ファイル同時選択OK</p>
+    <p>📂 ファイルを選択</p>
+    <small>CSV・JSON対応 / 複数ファイルOK</small>
   </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
-
 <script>
-  // 地図初期化
   const map = L.map('map').setView([36.5, 136.5], 6);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
+    attribution: '© OpenStreetMap'
   }).addTo(map);
 
   let allStores = [];
-  let markerCluster = L.markerClusterGroup({ chunkedLoading: true });
+  let markerCluster = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 60 });
   map.addLayer(markerCluster);
+  let myLocationMarker = null;
 
-  const regionColors = {};
-  const colorPalette = [
-    '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6',
-    '#1abc9c','#e67e22','#e91e63','#00bcd4','#8bc34a',
-    '#ff5722','#607d8b','#795548','#673ab7','#009688'
-  ];
-  let colorIndex = 0;
+  const STATUS_COLORS = {
+    'RECEIPT': '#2ecc71',
+    'APP_DISPLAY': '#FF5132',
+    'PENDING': '#f1c40f',
+    'default': '#aaaaaa'
+  };
 
-  function getRegionColor(region) {
-    if (!regionColors[region]) {
-      regionColors[region] = colorPalette[colorIndex % colorPalette.length];
-      colorIndex++;
-    }
-    return regionColors[region];
+  function getStatusColor(status) {
+    return STATUS_COLORS[status] || STATUS_COLORS.default;
   }
 
   function createIcon(color) {
     return L.divIcon({
       className: '',
-      html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+      html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
       iconSize: [12, 12],
       iconAnchor: [6, 6]
     });
   }
 
-  // CSVをShift-JISとして読み込む
-  function readFileAsText(file) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.readAsText(file, 'Shift-JIS');
-    });
+  function getStatusLabel(status) {
+    const map = { 'RECEIPT': '🟢 RECEIPT', 'APP_DISPLAY': '🟠 APP_DISPLAY', 'PENDING': '🔴 PENDING' };
+    return map[status] || status;
   }
 
-  function parseCSV(text, regionName) {
-    const lines = text.trim().split('\n');
-    const stores = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g) || [];
-      const name = (cols[0] || '').replace(/^"|"$/g, '').trim();
-      const address = (cols[1] || '').replace(/^"|"$/g, '').trim();
-      if (name && address) {
-        stores.push({ name, address, region: regionName });
-      }
-    }
-    return stores;
+  function getStatusClass(status) {
+    const map = { 'RECEIPT': 'status-receipt', 'APP_DISPLAY': 'status-app', 'PENDING': 'status-pending' };
+    return map[status] || '';
   }
 
-  // ジオコーディング（住所→座標）- Nominatim使用
-  async function geocode(address) {
-    const cleaned = address.replace(/〒\d{3}-\d{4}\s?/, '').trim();
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleaned)}&format=json&limit=1&countrycodes=jp`;
-    try {
-      const res = await fetch(url, { headers: { 'Accept-Language': 'ja' } });
-      const data = await res.json();
-      if (data.length > 0) {
-        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-      }
-    } catch(e) {}
-    return null;
+  function addMarker(store) {
+    const color = getStatusColor(store.ステータス || store.status || '');
+    const marker = L.marker([store.lat, store.lng], { icon: createIcon(color) });
+    const status = store.ステータス || store.status || '';
+    const address = store.住所 || store.address || '';
+    marker.bindPopup(`
+      <div style="min-width:200px">
+        <div class="popup-title">${store.店舗名 || store.name || ''}</div>
+        <div class="popup-address">${address}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="popup-status ${getStatusClass(status)}">${getStatusLabel(status)}</span>
+          <span style="font-size:11px;color:#666">${store.region || ''}</span>
+        </div>
+      </div>
+    `);
+    marker.storeData = store;
+    markerCluster.addLayer(marker);
   }
 
-  async function loadCSVFiles(event) {
+  async function loadFiles(event) {
     const files = event.target.files;
     if (!files.length) return;
 
@@ -245,89 +325,162 @@
     document.getElementById('loading').style.display = 'flex';
 
     for (const file of files) {
-      const regionName = file.name.replace('.csv', '');
-      const text = await readFileAsText(file);
-      const stores = parseCSV(text, regionName);
-
-      // 地域フィルターに追加
-      const filter = document.getElementById('region-filter');
-      if (![...filter.options].find(o => o.value === regionName)) {
-        const opt = document.createElement('option');
-        opt.value = regionName;
-        opt.textContent = regionName;
-        filter.appendChild(opt);
-      }
-
-      // 座標をジオコーディングして追加
-      for (let i = 0; i < stores.length; i++) {
-        const store = stores[i];
-        document.querySelector('#loading p').textContent =
-          `${regionName}: ${i+1}/${stores.length}件を処理中...`;
-
-        const coords = await geocode(store.address);
-        if (coords) {
-          store.lat = coords.lat;
-          store.lng = coords.lng;
-          allStores.push(store);
-          addMarker(store);
-          updateCount();
-        }
-        // Nominatimのレート制限（1秒1リクエスト）
-        await new Promise(r => setTimeout(r, 1100));
+      if (file.name.endsWith('.json')) {
+        await loadJSON(file);
+      } else if (file.name.endsWith('.csv')) {
+        await loadCSV(file);
       }
     }
 
     document.getElementById('loading').style.display = 'none';
-    if (allStores.length > 0) {
-      map.fitBounds(markerCluster.getBounds());
-    }
+    updateUI();
+    if (allStores.length > 0) map.fitBounds(markerCluster.getBounds());
     event.target.value = '';
   }
 
-  function addMarker(store) {
-    const color = getRegionColor(store.region);
-    const marker = L.marker([store.lat, store.lng], { icon: createIcon(color) });
-    marker.bindPopup(`
-      <div class="popup-title">${store.name}</div>
-      <div class="popup-region">📍 ${store.region}</div>
-      <div style="margin-top:4px;color:#444">${store.address}</div>
-    `);
-    marker.storeData = store;
-    markerCluster.addLayer(marker);
+  async function loadJSON(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          const stores = Array.isArray(data) ? data : [];
+          stores.forEach(s => {
+            if (s.lat && s.lng) {
+              allStores.push(s);
+              addMarker(s);
+              addToRegionFilter(s.region);
+            }
+          });
+        } catch(err) { console.error(err); }
+        resolve();
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
   }
 
-  function updateCount() {
-    document.getElementById('store-count').textContent = `${allStores.length}件`;
+  async function loadCSV(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const text = e.target.result;
+        const regionName = file.name.replace('.csv', '');
+        const lines = text.trim().split('\n');
+
+        document.getElementById('loading-text').textContent = `${regionName} を読み込み中...`;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].match(/(".*?"|[^,]+)(?=,|$)/g) || [];
+          const name = (cols[0] || '').replace(/^"|"$/g, '').trim();
+          const address = (cols[1] || '').replace(/^"|"$/g, '').trim();
+          const status = (cols[2] || '').replace(/^"|"$/g, '').trim();
+
+          if (!name) continue;
+
+          const store = { 店舗名: name, 住所: address, ステータス: status, region: regionName };
+
+          // 座標取得
+          const coords = await geocodeAddress(address || regionName);
+          if (coords) {
+            store.lat = coords.lat;
+            store.lng = coords.lng;
+            allStores.push(store);
+            addMarker(store);
+            addToRegionFilter(regionName);
+          }
+          await new Promise(r => setTimeout(r, 200));
+        }
+        resolve();
+      };
+      reader.readAsText(file, 'Shift-JIS');
+    });
+  }
+
+  async function geocodeAddress(address) {
+    const cleaned = address.replace(/〒\d{3}-\d{4}\s*/, '').trim();
+    if (!cleaned || cleaned.length < 3) return null;
+    try {
+      const res = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(cleaned)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        return { lat: data[0].geometry.coordinates[1], lng: data[0].geometry.coordinates[0] };
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  function addToRegionFilter(region) {
+    if (!region) return;
+    const filter = document.getElementById('region-filter');
+    if (![...filter.options].find(o => o.value === region)) {
+      const opt = document.createElement('option');
+      opt.value = region;
+      opt.textContent = region;
+      filter.appendChild(opt);
+    }
   }
 
   function filterStores() {
     const keyword = document.getElementById('search-box').value.toLowerCase();
     const region = document.getElementById('region-filter').value;
+    const status = document.getElementById('status-filter').value;
 
     markerCluster.clearLayers();
     let count = 0;
 
     allStores.forEach(store => {
-      const matchRegion = !region || store.region === region;
-      const matchKeyword = !keyword || store.name.toLowerCase().includes(keyword);
-      if (matchRegion && matchKeyword) {
-        addMarkerDirect(store);
+      const storeStatus = store.ステータス || store.status || '';
+      const storeName = store.店舗名 || store.name || '';
+      const storeAddress = store.住所 || store.address || '';
+      const storeRegion = store.region || '';
+
+      const matchRegion = !region || storeRegion === region;
+      const matchStatus = !status || storeStatus === status;
+      const matchKeyword = !keyword ||
+        storeName.toLowerCase().includes(keyword) ||
+        storeAddress.toLowerCase().includes(keyword);
+
+      if (matchRegion && matchStatus && matchKeyword) {
+        addMarker(store);
         count++;
       }
     });
 
-    document.getElementById('store-count').textContent = `${count}件`;
+    document.getElementById('store-count').textContent = `${count.toLocaleString()}件`;
+    updateStats();
   }
 
-  function addMarkerDirect(store) {
-    const color = getRegionColor(store.region);
-    const marker = L.marker([store.lat, store.lng], { icon: createIcon(color) });
-    marker.bindPopup(`
-      <div class="popup-title">${store.name}</div>
-      <div class="popup-region">📍 ${store.region}</div>
-      <div style="margin-top:4px;color:#444">${store.address}</div>
-    `);
-    markerCluster.addLayer(marker);
+  function updateUI() {
+    document.getElementById('stats').style.display = 'block';
+    document.getElementById('legend').style.display = 'block';
+    document.getElementById('store-count').textContent = `${allStores.length.toLocaleString()}件`;
+    updateStats();
+  }
+
+  function updateStats() {
+    const receipt = allStores.filter(s => (s.ステータス || s.status) === 'RECEIPT').length;
+    const app = allStores.filter(s => (s.ステータス || s.status) === 'APP_DISPLAY').length;
+    const pending = allStores.filter(s => (s.ステータス || s.status) === 'PENDING').length;
+    document.getElementById('count-receipt').textContent = receipt.toLocaleString();
+    document.getElementById('count-app').textContent = app.toLocaleString();
+    document.getElementById('count-pending').textContent = pending.toLocaleString();
+  }
+
+  function showMyLocation() {
+    if (!navigator.geolocation) { alert('位置情報が使えません'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      if (myLocationMarker) map.removeLayer(myLocationMarker);
+      myLocationMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:16px;height:16px;border-radius:50%;background:#4a90e2;border:3px solid white;box-shadow:0 0 8px rgba(74,144,226,0.8)"></div>`,
+          iconSize: [16, 16], iconAnchor: [8, 8]
+        })
+      }).addTo(map).bindPopup('📍 現在地').openPopup();
+      map.setView([lat, lng], 14);
+    }, () => alert('位置情報を取得できませんでした'));
   }
 </script>
 </body>
