@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>店舗マップ</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; }
+
+    #header {
+      background: #2563eb;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+    }
+
+    #header h1 { font-size: 18px; font-weight: bold; white-space: nowrap; }
+
+    #search-box {
+      padding: 8px 12px;
+      border-radius: 20px;
+      border: none;
+      font-size: 14px;
+      width: 200px;
+      outline: none;
+    }
+
+    #region-filter {
+      padding: 8px 12px;
+      border-radius: 20px;
+      border: none;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    #store-count {
+      font-size: 13px;
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+
+    #upload-btn {
+      background: white;
+      color: #2563eb;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #upload-btn:hover { background: #e0e7ff; }
+
+    #file-input { display: none; }
+
+    #map {
+      position: fixed;
+      top: 60px;
+      left: 0; right: 0; bottom: 0;
+    }
+
+    #loading {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      font-size: 16px;
+      color: #2563eb;
+    }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid #e0e7ff;
+      border-top: 4px solid #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #welcome {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      text-align: center;
+      z-index: 500;
+      max-width: 320px;
+      width: 90%;
+    }
+
+    #welcome h2 { font-size: 20px; margin-bottom: 8px; color: #1e40af; }
+    #welcome p { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+
+    .upload-area {
+      border: 2px dashed #2563eb;
+      border-radius: 12px;
+      padding: 24px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .upload-area:hover { background: #eff6ff; }
+    .upload-area p { color: #2563eb; font-size: 14px; font-weight: bold; }
+
+    .leaflet-popup-content { font-size: 13px; line-height: 1.6; }
+    .popup-title { font-weight: bold; font-size: 14px; color: #1e40af; }
+    .popup-region { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🗺️ 店舗マップ</h1>
+  <input type="text" id="search-box" placeholder="🔍 店舗名で検索..." oninput="filterStores()">
+  <select id="region-filter" onchange="filterStores()">
+    <option value="">📍 全地域</option>
+  </select>
+  <span id="store-count">0件</span>
+  <button id="upload-btn" onclick="document.getElementById('file-input').click()">＋ CSVを追加</button>
+  <input type="file" id="file-input" accept=".csv" multiple onchange="loadCSVFiles(event)">
+</div>
+
+<div id="map"></div>
+
+<div id="loading" style="display:none">
+  <div class="spinner"></div>
+  <p>読み込み中...</p>
+</div>
+
+<div id="welcome">
+  <h2>🗺️ 店舗マップへようこそ</h2>
+  <p>CSVファイルをアップロードすると<br>地図上に店舗が表示されます</p>
+  <div class="upload-area" onclick="document.getElementById('file-input').click()">
+    <p>📂 CSVファイルを選択</p>
+    <p style="color:#999;font-size:12px;font-weight:normal;margin-top:4px">複数ファイル同時選択OK</p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+
+<script>
+  // 地図初期化
+  const map = L.map('map').setView([36.5, 136.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  let allStores = [];
+  let markerCluster = L.markerClusterGroup({ chunkedLoading: true });
+  map.addLayer(markerCluster);
+
+  const regionColors = {};
+  const colorPalette = [
+    '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6',
+    '#1abc9c','#e67e22','#e91e63','#00bcd4','#8bc34a',
+    '#ff5722','#607d8b','#795548','#673ab7','#009688'
+  ];
+  let colorIndex = 0;
+
+  function getRegionColor(region) {
+    if (!regionColors[region]) {
+      regionColors[region] = colorPalette[colorIndex % colorPalette.length];
+      colorIndex++;
+    }
+    return regionColors[region];
+  }
+
+  function createIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+  }
+
+  // CSVをShift-JISとして読み込む
+  function readFileAsText(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.readAsText(file, 'Shift-JIS');
+    });
+  }
+
+  function parseCSV(text, regionName) {
+    const lines = text.trim().split('\n');
+    const stores = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g) || [];
+      const name = (cols[0] || '').replace(/^"|"$/g, '').trim();
+      const address = (cols[1] || '').replace(/^"|"$/g, '').trim();
+      if (name && address) {
+        stores.push({ name, address, region: regionName });
+      }
+    }
+    return stores;
+  }
+
+  // ジオコーディング（住所→座標）- Nominatim使用
+  async function geocode(address) {
+    const cleaned = address.replace(/〒\d{3}-\d{4}\s?/, '').trim();
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleaned)}&format=json&limit=1&countrycodes=jp`;
+    try {
+      const res = await fetch(url, { headers: { 'Accept-Language': 'ja' } });
+      const data = await res.json();
+      if (data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  async function loadCSVFiles(event) {
+    const files = event.target.files;
+    if (!files.length) return;
+
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('loading').style.display = 'flex';
+
+    for (const file of files) {
+      const regionName = file.name.replace('.csv', '');
+      const text = await readFileAsText(file);
+      const stores = parseCSV(text, regionName);
+
+      // 地域フィルターに追加
+      const filter = document.getElementById('region-filter');
+      if (![...filter.options].find(o => o.value === regionName)) {
+        const opt = document.createElement('option');
+        opt.value = regionName;
+        opt.textContent = regionName;
+        filter.appendChild(opt);
+      }
+
+      // 座標をジオコーディングして追加
+      for (let i = 0; i < stores.length; i++) {
+        const store = stores[i];
+        document.querySelector('#loading p').textContent =
+          `${regionName}: ${i+1}/${stores.length}件を処理中...`;
+
+        const coords = await geocode(store.address);
+        if (coords) {
+          store.lat = coords.lat;
+          store.lng = coords.lng;
+          allStores.push(store);
+          addMarker(store);
+          updateCount();
+        }
+        // Nominatimのレート制限（1秒1リクエスト）
+        await new Promise(r => setTimeout(r, 1100));
+      }
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    if (allStores.length > 0) {
+      map.fitBounds(markerCluster.getBounds());
+    }
+    event.target.value = '';
+  }
+
+  function addMarker(store) {
+    const color = getRegionColor(store.region);
+    const marker = L.marker([store.lat, store.lng], { icon: createIcon(color) });
+    marker.bindPopup(`
+      <div class="popup-title">${store.name}</div>
+      <div class="popup-region">📍 ${store.region}</div>
+      <div style="margin-top:4px;color:#444">${store.address}</div>
+    `);
+    marker.storeData = store;
+    markerCluster.addLayer(marker);
+  }
+
+  function updateCount() {
+    document.getElementById('store-count').textContent = `${allStores.length}件`;
+  }
+
+  function filterStores() {
+    const keyword = document.getElementById('search-box').value.toLowerCase();
+    const region = document.getElementById('region-filter').value;
+
+    markerCluster.clearLayers();
+    let count = 0;
+
+    allStores.forEach(store => {
+      const matchRegion = !region || store.region === region;
+      const matchKeyword = !keyword || store.name.toLowerCase().includes(keyword);
+      if (matchRegion && matchKeyword) {
+        addMarkerDirect(store);
+        count++;
+      }
+    });
+
+    document.getElementById('store-count').textContent = `${count}件`;
+  }
+
+  function addMarkerDirect(store) {
+    const color = getRegionColor(store.region);
+    const marker = L.marker([store.lat, store.lng], { icon: createIcon(color) });
+    marker.bindPopup(`
+      <div class="popup-title">${store.name}</div>
+      <div class="popup-region">📍 ${store.region}</div>
+      <div style="margin-top:4px;color:#444">${store.address}</div>
+    `);
+    markerCluster.addLayer(marker);
+  }
+</script>
+</body>
+</html>
