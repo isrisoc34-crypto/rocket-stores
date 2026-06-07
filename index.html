@@ -448,6 +448,13 @@
 
     document.getElementById('store-count').textContent = `${count.toLocaleString()}件`;
     updateStats();
+
+    // 検索・フィルター結果にズーム
+    if (count > 0 && (keyword || region || status)) {
+      try { map.fitBounds(markerCluster.getBounds(), { maxZoom: 15, padding: [40, 40] }); } catch(e) {}
+    } else if (count === 0 && keyword) {
+      // 結果なし
+    }
   }
 
   function updateUI() {
