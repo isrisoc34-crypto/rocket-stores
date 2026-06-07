@@ -141,6 +141,16 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #loading p { font-size: 14px; opacity: 0.8; }
+    #progress-bar-wrap {
+      width: 240px; height: 6px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 3px; margin-top: 12px; overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%; width: 0%;
+      background: #FF5132; border-radius: 3px;
+      transition: width 0.3s;
+    }
 
     /* ウェルカム */
     #welcome {
@@ -244,6 +254,8 @@
 <div id="loading">
   <div class="spinner"></div>
   <p id="loading-text">読み込み中...</p>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+  <p id="loading-sub" style="font-size:12px;opacity:0.5;margin-top:6px"></p>
 </div>
 
 <div id="welcome">
@@ -493,23 +505,60 @@
   async function autoLoadStores() {
     document.getElementById('loading').style.display = 'flex';
     document.getElementById('loading-text').textContent = '店舗データを読み込み中...';
+
     try {
-      const res = await fetch('./stores.json');
-      if (!res.ok) throw new Error('stores.json not found');
-      const data = await res.json();
-      const stores = Array.isArray(data) ? data : [];
-      stores.forEach(s => {
-        if (s.lat && s.lng) {
-          allStores.push(s);
-          addMarker(s);
-          addToRegionFilter(s.region);
-        }
-      });
+      // 地域インデックスを取得
+      const idxRes = await fetch('./stores/index.json');
+      if (!idxRes.ok) throw new Error('index not found');
+      const index = await idxRes.json();
+      const total = index.reduce((s, r) => s + r.count, 0);
+      let loaded = 0;
+
       document.getElementById('welcome').style.display = 'none';
+
+      // 地域ファイルを並列バッチ（10件ずつ）で読み込む
+      const BATCH = 10;
+      for (let i = 0; i < index.length; i += BATCH) {
+        const batch = index.slice(i, i + BATCH);
+        await Promise.all(batch.map(async ({ region }) => {
+          try {
+            const res = await fetch(`./stores/${encodeURIComponent(region)}.json`);
+            if (!res.ok) return;
+            const stores = await res.json();
+            stores.forEach(s => {
+              if (s.lat && s.lng) {
+                allStores.push(s);
+                addMarker(s);
+                addToRegionFilter(s.region);
+              }
+            });
+            loaded += stores.length;
+            const pct = Math.round(loaded / total * 100);
+            document.getElementById('progress-bar').style.width = pct + '%';
+            document.getElementById('loading-sub').textContent = `${loaded.toLocaleString()} / ${total.toLocaleString()}件`;
+            document.getElementById('store-count').textContent = `${allStores.length.toLocaleString()}件`;
+          } catch(e) {}
+        }));
+        updateStats();
+      }
+
       document.getElementById('loading').style.display = 'none';
       updateUI();
       if (allStores.length > 0) map.fitBounds(markerCluster.getBounds());
+
     } catch(e) {
+      // フォールバック: stores.jsonを直接読み込む
+      try {
+        const res = await fetch('./stores.json');
+        if (!res.ok) throw new Error();
+        const stores = await res.json();
+        stores.forEach(s => {
+          if (s.lat && s.lng) { allStores.push(s); addMarker(s); addToRegionFilter(s.region); }
+        });
+        document.getElementById('welcome').style.display = 'none';
+        updateUI();
+        if (allStores.length > 0) map.fitBounds(markerCluster.getBounds());
+      } catch(e2) {}
       document.getElementById('loading').style.display = 'none';
     }
   }
