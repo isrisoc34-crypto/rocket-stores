@@ -226,7 +226,7 @@
     <option value="">全ステータス</option>
     <option value="RECEIPT">🟢 登録中</option>
     <option value="APP_DISPLAY">🟠 アプリ掲載中</option>
-    <option value="PENDING">🔴 PENDING</option>
+    <option value="PENDING">🔴 B2B調整中</option>
   </select>
   <span id="store-count">0件</span>
   <button id="location-btn" onclick="showMyLocation()">📍 現在地</button>
@@ -241,7 +241,7 @@
   <h4>📊 ステータス内訳</h4>
   <div class="stat-item"><span>🟢 登録中</span><span class="stat-num" id="count-receipt">0</span></div>
   <div class="stat-item"><span>🟠 アプリ掲載中</span><span class="stat-num" id="count-app">0</span></div>
-  <div class="stat-item"><span>🔴 PENDING</span><span class="stat-num" id="count-pending">0</span></div>
+  <div class="stat-item"><span>🔴 B2B調整中</span><span class="stat-num" id="count-pending">0</span></div>
 </div>
 
 <!-- 凡例 -->
@@ -249,7 +249,7 @@
   <h4>ステータス</h4>
   <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>登録中</div>
   <div class="legend-item"><div class="legend-dot" style="background:#FF5132"></div>アプリ掲載中</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#f1c40f"></div>PENDING（対応中）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f1c40f"></div>B2B調整中</div>
 </div>
 
 <div id="loading">
@@ -302,7 +302,7 @@
   }
 
   function getStatusLabel(status) {
-    const map = { 'RECEIPT': '🟢 登録中', 'APP_DISPLAY': '🟠 アプリ掲載中', 'PENDING': '🔴 PENDING' };
+    const map = { 'RECEIPT': '🟢 登録中', 'APP_DISPLAY': '🟠 アプリ掲載中', 'PENDING': '🔴 B2B調整中' };
     return map[status] || status;
   }
 
