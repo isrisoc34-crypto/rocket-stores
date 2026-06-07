@@ -482,6 +482,32 @@
       map.setView([lat, lng], 14);
     }, () => alert('位置情報を取得できませんでした'));
   }
+
+  async function autoLoadStores() {
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('loading-text').textContent = '店舗データを読み込み中...';
+    try {
+      const res = await fetch('./stores.json');
+      if (!res.ok) throw new Error('stores.json not found');
+      const data = await res.json();
+      const stores = Array.isArray(data) ? data : [];
+      stores.forEach(s => {
+        if (s.lat && s.lng) {
+          allStores.push(s);
+          addMarker(s);
+          addToRegionFilter(s.region);
+        }
+      });
+      document.getElementById('welcome').style.display = 'none';
+      document.getElementById('loading').style.display = 'none';
+      updateUI();
+      if (allStores.length > 0) map.fitBounds(markerCluster.getBounds());
+    } catch(e) {
+      document.getElementById('loading').style.display = 'none';
+    }
+  }
+
+  autoLoadStores();
 </script>
 </body>
 </html>
