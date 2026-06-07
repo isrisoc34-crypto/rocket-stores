@@ -224,8 +224,8 @@
   </select>
   <select id="status-filter" onchange="filterStores()">
     <option value="">全ステータス</option>
-    <option value="RECEIPT">🟢 RECEIPT</option>
-    <option value="APP_DISPLAY">🟠 APP_DISPLAY</option>
+    <option value="RECEIPT">🟢 登録中</option>
+    <option value="APP_DISPLAY">🟠 アプリ掲載中</option>
     <option value="PENDING">🔴 PENDING</option>
   </select>
   <span id="store-count">0件</span>
@@ -239,16 +239,16 @@
 <!-- 統計パネル -->
 <div id="stats" style="display:none">
   <h4>📊 ステータス内訳</h4>
-  <div class="stat-item"><span>🟢 RECEIPT</span><span class="stat-num" id="count-receipt">0</span></div>
-  <div class="stat-item"><span>🟠 APP_DISPLAY</span><span class="stat-num" id="count-app">0</span></div>
+  <div class="stat-item"><span>🟢 登録中</span><span class="stat-num" id="count-receipt">0</span></div>
+  <div class="stat-item"><span>🟠 アプリ掲載中</span><span class="stat-num" id="count-app">0</span></div>
   <div class="stat-item"><span>🔴 PENDING</span><span class="stat-num" id="count-pending">0</span></div>
 </div>
 
 <!-- 凡例 -->
 <div id="legend" style="display:none">
   <h4>ステータス</h4>
-  <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>RECEIPT（完全導入）</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#FF5132"></div>APP_DISPLAY（アプリのみ）</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>登録中</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FF5132"></div>アプリ掲載中</div>
   <div class="legend-item"><div class="legend-dot" style="background:#f1c40f"></div>PENDING（対応中）</div>
 </div>
 
@@ -302,7 +302,7 @@
   }
 
   function getStatusLabel(status) {
-    const map = { 'RECEIPT': '🟢 RECEIPT', 'APP_DISPLAY': '🟠 APP_DISPLAY', 'PENDING': '🔴 PENDING' };
+    const map = { 'RECEIPT': '🟢 登録中', 'APP_DISPLAY': '🟠 アプリ掲載中', 'PENDING': '🔴 PENDING' };
     return map[status] || status;
   }
 
