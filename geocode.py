@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Excelから直接ジオコーディングして stores.json を生成するスクリプト
+- 入力: /Users/riis/Desktop/data.xlsx（全76,000件超）
+- 国土地理院API + zipcloud（郵便番号補完）
+- キャッシュ活用で高速化・途中再開対応
+"""
 
 import os
 import time
@@ -8,10 +14,12 @@ import pandas as pd
 import json
 import re
 
-CSV_FOLDER = "/Users/riis/csv_output"
-OUTPUT_FOLDER = "/Users/riis/store-map/data"
-CACHE_FILE = "/Users/riis/store-map/geocache.json"
+EXCEL_FILE   = "/Users/riis/Downloads/data (1).xlsx"
+CACHE_FILE   = "/Users/riis/store-map/geocache.json"
+OUTPUT_JSON  = "/Users/riis/store-map/stores.json"
+PROGRESS_FILE = "/Users/riis/store-map/progress.json"  # 途中再開用
 
+# ── キャッシュ ──────────────────────────────────────────
 def load_cache():
     if os.path.exists(CACHE_FILE):
         try:
@@ -27,6 +35,7 @@ def save_cache(cache):
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
 
+# ── 住所クリーニング ────────────────────────────────────
 def extract_postal_code(address):
     address = str(address).replace("₸", "〒").strip()
     m = re.search(r'(\d{3})-?(\d{4})', address)
@@ -41,12 +50,11 @@ def clean_address(address):
     address = re.sub(r'\s+\S+棟.*$', '', address)
     return address
 
+# ── zipcloud（郵便番号→住所補完）──────────────────────
 def zipcloud_lookup(postal_code, cache):
-    """郵便番号→住所（都道府県+市区町村+町域）"""
     key = f"zip:{postal_code}"
     if key in cache:
         return cache[key]
-
     code = postal_code.replace("-", "")
     try:
         res = requests.get(
@@ -59,26 +67,23 @@ def zipcloud_lookup(postal_code, cache):
             r = data["results"][0]
             address = r["address1"] + r["address2"] + r["address3"]
             cache[key] = address
-            time.sleep(0.2)
+            time.sleep(0.15)
             return address
     except:
         pass
-
     cache[key] = None
     return None
 
+# ── 国土地理院ジオコーディング ──────────────────────────
 def geocode(query, cache):
-    """国土地理院APIで住所→座標変換"""
     query = str(query).strip()
     if not query or query == "nan" or len(query) < 3:
         return None, None
-
     if query in cache:
         entry = cache[query]
         if entry is None:
             return None, None
         return entry["lat"], entry["lng"]
-
     try:
         res = requests.get(
             "https://msearch.gsi.go.jp/address-search/AddressSearch",
@@ -91,170 +96,125 @@ def geocode(query, cache):
             lat = float(coords[1])
             lng = float(coords[0])
             cache[query] = {"lat": lat, "lng": lng}
+            time.sleep(0.15)
             return lat, lng
     except:
         pass
-
     cache[query] = None
     return None, None
 
-def resolve_address(raw_address, postal_code, cache):
+# ── 住所解決（優先順位付き）────────────────────────────
+def resolve_address(raw_address, region, cache):
     """
-    住所解決の優先順位:
     1. 完全住所でジオコーディング
-    2. 郵便番号→zipcloudで住所補完→ジオコーディング
-    3. 郵便番号だけでジオコーディング（最終手段）
+    2. 郵便番号→zipcloud補完→ジオコーディング
+    3. 地域名でジオコーディング（最終フォールバック）
     """
-    # 1. 完全住所
+    postal_code = extract_postal_code(raw_address)
     cleaned = clean_address(raw_address)
+
+    # 1. 完全住所
     if cleaned and len(cleaned) >= 5:
         lat, lng = geocode(cleaned, cache)
         if lat:
-            time.sleep(0.2)
             return lat, lng, "address"
 
-    # 2. 郵便番号→zipcloud補完
+    # 2. zipcloud補完
     if postal_code:
         zip_address = zipcloud_lookup(postal_code, cache)
         if zip_address:
-            # zipcloudの住所 + 元住所の残り部分を結合
-            remaining = cleaned if cleaned and len(cleaned) >= 2 else ""
-            full = zip_address + remaining if remaining and remaining not in zip_address else zip_address
+            remaining = cleaned if (cleaned and len(cleaned) >= 2 and cleaned not in zip_address) else ""
+            full = zip_address + remaining if remaining else zip_address
             lat, lng = geocode(full, cache)
             if lat:
-                time.sleep(0.2)
                 return lat, lng, "zipcloud"
 
-        # 3. 郵便番号をそのまま投げる
-        lat, lng = geocode(postal_code, cache)
+    # 3. 地域フォールバック
+    if region:
+        lat, lng = geocode(region, cache)
         if lat:
-            time.sleep(0.2)
-            return lat, lng, "postal"
+            return lat, lng, "region"
 
-    return None, None, None
+    return None, None, "fail"
 
-def process_csv(filepath, region_name, cache):
-    df = None
-    for enc in ["shift-jis", "utf-8", "cp932", "utf-8-sig", "latin-1"]:
-        try:
-            df = pd.read_csv(filepath, encoding=enc)
-            break
-        except:
-            continue
-    if df is None:
-        print(f"  ❌ 読み込みエラー: 文字コード不明")
-        return None
-
-    if "店舗名" not in df.columns:
-        print(f"  ⚠️ 店舗名列なし")
-        return None
-
-    if "住所" not in df.columns:
-        df["住所"] = ""
-    if "ステータス" not in df.columns:
-        df["ステータス"] = "RECEIPT"
-
-    # 地域の代表座標（最終フォールバック用）
-    region_lat, region_lng = geocode(region_name, cache)
-    if region_lat:
-        time.sleep(0.2)
-
-    lats, lngs, methods = [], [], []
-    total = len(df)
-    counts = {"address": 0, "zipcloud": 0, "postal": 0, "region": 0, "fail": 0}
-
-    for i, row in df.iterrows():
-        raw_address = str(row.get("住所", "")).strip()
-        postal_code = extract_postal_code(raw_address)
-
-        lat, lng, method = resolve_address(raw_address, postal_code, cache)
-
-        if lat is None and region_lat:
-            lat, lng, method = region_lat, region_lng, "region"
-
-        lats.append(lat)
-        lngs.append(lng)
-        methods.append(method or "fail")
-        counts[method or "fail"] = counts.get(method or "fail", 0) + 1
-
-        if (i + 1) % 100 == 0:
-            print(f"  {i+1}/{total}件処理中...")
-            save_cache(cache)
-
-    df["lat"] = lats
-    df["lng"] = lngs
-    df["region"] = region_name
-    df["_method"] = methods
-
-    df_ok = df.dropna(subset=["lat", "lng"])
-    success = len(df_ok)
-    print(f"  ✅ {success}/{total}件 | 住所:{counts['address']} zipcloud:{counts['zipcloud']} 郵便:{counts['postal']} 地域:{counts['region']} 失敗:{counts['fail']}")
-    return df_ok
-
+# ── メイン ─────────────────────────────────────────────
 def main():
-    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    print("📖 Excelを読み込み中...")
+    df = pd.read_excel(EXCEL_FILE, header=2)
+    df.columns = ["StoreID", "店舗名", "region", "住所", "住所EN", "ステータス"]
+    df = df[df["ステータス"].isin(["RECEIPT", "APP_DISPLAY", "PENDING"])]
+    df["住所"] = df["住所"].fillna("").astype(str)
+    df = df.reset_index(drop=True)
+    total = len(df)
+    print(f"✅ {total:,}件のデータを読み込みました")
+
     cache = load_cache()
-    print(f"💾 キャッシュ: {len(cache)}件読み込み済み")
+    print(f"💾 キャッシュ: {len(cache):,}件")
 
-    csv_files = sorted([f for f in os.listdir(CSV_FOLDER) if f.endswith(".csv")])
-    total_files = len(csv_files)
-    print(f"📂 {total_files}個のCSVファイルを処理します")
+    # 途中再開: 処理済みインデックスを読み込む
+    done_ids = set()
+    results = []
+    if os.path.exists(PROGRESS_FILE):
+        try:
+            with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                results = saved.get("results", [])
+                done_ids = set(saved.get("done_ids", []))
+                print(f"🔄 途中再開: {len(done_ids):,}件処理済み")
+        except:
+            pass
+
     print("=" * 60)
+    counts = {"address": 0, "zipcloud": 0, "region": 0, "fail": 0}
 
-    all_data = []
-    total_counts = {"address": 0, "zipcloud": 0, "postal": 0, "region": 0, "fail": 0}
-
-    for idx, filename in enumerate(csv_files):
-        region_name = filename.replace(".csv", "")
-        filepath = os.path.join(CSV_FOLDER, filename)
-        output_path = os.path.join(OUTPUT_FOLDER, filename)
-
-        if os.path.exists(output_path):
-            print(f"✅ [{idx+1}/{total_files}] {region_name} - スキップ")
-            try:
-                df = pd.read_csv(output_path, encoding="utf-8")
-                all_data.append(df)
-                # カウント集計
-                if "_method" in df.columns:
-                    for m in ["address", "zipcloud", "postal", "region", "fail"]:
-                        total_counts[m] += (df["_method"] == m).sum()
-            except:
-                pass
+    for idx, row in df.iterrows():
+        store_id = str(row["StoreID"])
+        if store_id in done_ids:
             continue
 
-        print(f"🔄 [{idx+1}/{total_files}] {region_name} を処理中...")
-        df = process_csv(filepath, region_name, cache)
+        lat, lng, method = resolve_address(row["住所"], row["region"], cache)
 
-        if df is not None and len(df) > 0:
-            df.to_csv(output_path, index=False, encoding="utf-8")
-            all_data.append(df)
-            if "_method" in df.columns:
-                for m in ["address", "zipcloud", "postal", "region", "fail"]:
-                    total_counts[m] += (df["_method"] == m).sum()
-        else:
-            print(f"  ⚠️ データなし")
+        if lat:
+            results.append({
+                "店舗名": row["店舗名"],
+                "住所": row["住所"],
+                "ステータス": row["ステータス"],
+                "region": row["region"],
+                "lat": lat,
+                "lng": lng,
+            })
+        counts[method] = counts.get(method, 0) + 1
+        done_ids.add(store_id)
 
-        save_cache(cache)
+        # 500件ごとに保存・進捗表示
+        if (idx + 1) % 500 == 0:
+            save_cache(cache)
+            # 進捗保存
+            with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+                json.dump({"results": results, "done_ids": list(done_ids)}, f, ensure_ascii=False)
+            pct = len(done_ids) / total * 100
+            print(f"  [{len(done_ids):,}/{total:,}] {pct:.1f}% | "
+                  f"住所:{counts['address']} zipcloud:{counts['zipcloud']} "
+                  f"地域:{counts['region']} 失敗:{counts['fail']}")
 
-    if all_data:
-        combined = pd.concat(all_data, ignore_index=True)
-        combined = combined.dropna(subset=["lat", "lng"])
+    # 最終保存
+    save_cache(cache)
 
-        cols = ["店舗名", "住所", "ステータス", "region", "lat", "lng"]
-        cols = [c for c in cols if c in combined.columns]
-        combined = combined[cols]
+    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False)
 
-        json_path = "/Users/riis/store-map/stores.json"
-        combined.to_json(json_path, orient="records", force_ascii=False)
+    # progressファイル削除（完了）
+    if os.path.exists(PROGRESS_FILE):
+        os.remove(PROGRESS_FILE)
 
-        print("=" * 60)
-        print(f"🎉 完了！合計 {len(combined)}件")
-        print(f"  📍 住所ジオコーディング : {total_counts['address']}件")
-        print(f"  📮 郵便番号→zipcloud補完: {total_counts['zipcloud']}件")
-        print(f"  🔢 郵便番号直接       : {total_counts['postal']}件")
-        print(f"  🗾 地域中心フォールバック: {total_counts['region']}件")
-        print(f"  ❌ 座標取得失敗       : {total_counts['fail']}件")
-        print(f"📄 出力: {json_path}")
+    print("=" * 60)
+    print(f"🎉 完了！")
+    print(f"  📍 住所ジオコーディング    : {counts['address']:,}件")
+    print(f"  📮 郵便番号→zipcloud補完  : {counts['zipcloud']:,}件")
+    print(f"  🗾 地域フォールバック      : {counts['region']:,}件")
+    print(f"  ❌ 取得失敗               : {counts['fail']:,}件")
+    print(f"  📦 合計出力               : {len(results):,}件 / {total:,}件")
+    print(f"  📄 出力先: {OUTPUT_JSON}")
 
 if __name__ == "__main__":
     main()
